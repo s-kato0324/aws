@@ -1,0 +1,122 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Provision of ECS
+
+Parameters:
+  AccountId:
+    Type: String
+    Description: AccountId
+  VPCId:
+    Type: String
+    Description: VPC ID
+  PrivateSubnet1:
+    Type: String
+    Description: Private Subnet1
+  PrivateSubnet2:
+    Type: String
+    Description: Private Subnet2
+  ALBName:
+    Type: String
+    Description: ALBName
+  TargetGroupArn:
+    Type: String
+    Description: TargetGroupArn
+  ContainerName:
+    Type: String
+    Description: ContainerName
+  ClusterName:
+    Type: String
+    Description: ClusterName
+  ServiceName:
+    Type: String
+    Description: ServiceName
+
+Resources:
+  # ECS Service Security Group
+  ECSServiceSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SecurityGroup"
+      Tags:
+        - Key: Name
+          Value: cfn-backend-ecs-service-sg
+      VpcId: !Ref VPCId
+
+  ECSServiceSgIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: "Allow Connect by HTTP"
+      FromPort: 80
+      ToPort: 80
+      GroupId: !Ref ECSServiceSg
+      IpProtocol: tcp
+
+  ECSServiceSgEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: "Connected by All Port"
+      GroupId: !Ref ECSServiceSg
+      IpProtocol: -1
+
+  # ECS Clusterの作成
+  ECSCluster:
+    Type: "AWS::ECS::Cluster"
+    Properties:
+      ClusterName: !Ref ClusterName
+
+  # タスク定義の作成
+  ECSTaskDef:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Cpu: 1024
+          Essential: true
+          Image: !Sub ${AccountId}.dkr.ecr.ap-northeast-1.amazonaws.com/todo-backend
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-create-group: true
+              awslogs-group: /ecs/cfn-backend-fargate
+              awslogs-region: ap-northeast-1
+              awslogs-stream-prefix: ecs
+          Memory: 2048
+          MemoryReservation: 2048
+          Name: !Ref ContainerName
+          PortMappings:
+            - ContainerPort: 80
+      Cpu: 1024
+      ExecutionRoleArn: !Sub arn:aws:iam::${AccountId}:role/ecsTaskExecutionRole
+      Family: cfn-backend-family
+      Memory: 2048
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      TaskRoleArn: !Sub arn:aws:iam::${AccountId}:role/ecsTaskExecutionRole
+
+  # ECS Serviceの作成
+  ECSService:
+    Type: AWS::ECS::Service
+    Properties:
+      Cluster: !Ref ECSCluster
+      DeploymentController:
+        Type: ECS
+      DesiredCount: 1
+      LaunchType: FARGATE
+      LoadBalancers:
+        - ContainerName: !Ref ContainerName
+          ContainerPort: 80
+          TargetGroupArn: !Ref TargetGroupArn
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ECSServiceSg
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+      ServiceName: !Ref ServiceName
+      TaskDefinition: !Ref ECSTaskDef

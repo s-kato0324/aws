@@ -1,0 +1,100 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Manage myself verification environment
+
+Parameters:
+  VPCId:
+    Type: String
+    Description: VPC ID
+
+  PublicSubnet1:
+    Type: String
+    Description: Public Subnet1 ID
+
+  PublicSubnet2:
+    Type: String
+    Description: Public Subnet2 ID
+
+  BackendACMArn:
+    Type: String
+    Description: Backend ACM Arn
+
+Resources:
+  # ALB Security Group
+  ALBSg:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "SecurityGroup"
+      Tags:
+        - Key: Name
+          Value: cfn-backend-alb-sg
+      VpcId: !Ref VPCId
+
+  ElbSgIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: "Allow Connect by HTTPS"
+      FromPort: 443
+      ToPort: 443
+      GroupId: !Ref ALBSg
+      IpProtocol: tcp
+
+  ElbSgEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      CidrIp: 0.0.0.0/0
+      Description: "Connected by All Port"
+      GroupId: !Ref ALBSg
+      IpProtocol: -1
+
+  # ターゲットグループの作成
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckPath: /todo
+      Name: cfn-backend-target-group
+      Port: 80
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPCId
+
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: cfn-backend-alb
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref ALBSg
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      Type: application
+
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    DependsOn:
+      - TargetGroup
+      - ALB
+    Properties:
+      Certificates:
+        - CertificateArn: !Ref BackendACMArn
+      DefaultActions:
+        - TargetGroupArn: !Ref TargetGroup
+          Type: forward
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+
+Outputs:
+  ALBSgId:
+    Value: !Ref ALBSg
+    Description: ALB SG ID
+
+  ALBName:
+    Value: !GetAtt ALB.LoadBalancerName
+    Description: ALB SG ID
+
+  TargetGroupArn:
+    Value: !Ref TargetGroup
+    Description: TargetGroup Arn

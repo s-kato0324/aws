@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: CodePipeline template
+
+Parameters:
+  DistributionID:
+    Type: String
+    Description: Distribution ID
+  BucketName:
+    Type: String
+    Description: S3 Bucket Name
+  CodeBuildRoleArn:
+    Type: String
+    Description: CodeBuild Service Role
+  CodepipelineRoleArn:
+    Type: String
+    Description: Codepipeline Role
+  ConnectionArn:
+    Type: String
+    Description: GitHub Connection ARN
+  RepositoryName:
+    Type: String
+    Description: github target repository Name
+  BranchName:
+    Type: String
+    Description: github target repository branch name
+
+Resources:
+  # CodeBuildの作成
+  cfnCodeBuild:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: "CODEPIPELINE"
+      Description: "CodeBuild by CloudFormation"
+      Environment:
+        ComputeType: "BUILD_GENERAL1_SMALL"
+        EnvironmentVariables:
+          - Name: "DISTRIBUTION_ID"
+            Type: "PLAINTEXT"
+            Value: !Ref DistributionID
+        Image: "aws/codebuild/standard:7.0"
+        Type: "LINUX_CONTAINER"
+      LogsConfig:
+        CloudWatchLogs:
+          Status: ENABLED
+        S3Logs:
+          Status: DISABLED
+      Name: "cfn-frontend-codebuild"
+      ServiceRole: !Ref CodeBuildRoleArn
+      Source:
+        BuildSpec: "buildspec.yml"
+        Type: "CODEPIPELINE"
+
+  # CodePipelineの作成
+  cfnCodePipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref BucketName
+        Type: "S3"
+      Name: "cfn-frontend-codepipeline"
+      RestartExecutionOnUpdate: true
+      RoleArn: !Ref CodepipelineRoleArn
+      Stages:
+        - Name: "Source"
+          Actions:
+            - ActionTypeId:
+                Category: "Source"
+                Owner: "AWS"
+                Provider: "CodeStarSourceConnection"
+                Version: "1"
+              Configuration:
+                FullRepositoryId: !Ref RepositoryName
+                ConnectionArn: !Ref ConnectionArn
+                BranchName: !Ref BranchName
+                DetectChanges: "true"
+              Name: "SourceAction"
+              OutputArtifacts:
+                - Name: "SourceArtifact"
+              RunOrder: 1
+        - Name: "Build"
+          Actions:
+            - ActionTypeId:
+                Category: "Build"
+                Owner: "AWS"
+                Provider: "CodeBuild"
+                Version: "1"
+              Configuration:
+                ProjectName: !Ref cfnCodeBuild
+              InputArtifacts:
+                - Name: "SourceArtifact"
+              Name: "BuildAction"

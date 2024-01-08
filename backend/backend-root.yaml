@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Manage myself verification environment
+
+Parameters:
+  AccountId:
+    Description: execute Account ID
+    Type: String
+
+  TargetGroupName:
+    Description: Target Group Name
+    Default: cfn-backend-target-group
+    Type: String
+
+  BackendACMArn:
+    Description: Backend ACM Arn
+    Type: String
+
+  ContainerName:
+    Description: Container Name
+    Default: cfn-todo-backend-container
+    Type: String
+
+  ECSClusterName:
+    Description: ECS Cluster Name
+    Default: cfn-backend-cluster
+    Type: String
+
+  ECSServiceName:
+    Description: ECS Service Name
+    Default: cfn-backend-service
+    Type: String
+
+  ArtifactStoreS3:
+    Type: String
+    Description: S3 ArtifactStore
+
+  GitHubConnectionArn:
+    Type: String
+    Description: github connection arn
+
+  RepositoryName:
+    Type: String
+    Description: github target repository Name
+
+  BranchName:
+    Type: String
+    Description: github target repository branch name
+
+  TemplateNetwork:
+    Description: Network template Object URL
+    Type: String
+
+  TemplateALB:
+    Description: Application LoadBalancer template Object URL
+    Type: String
+
+  TemplateECS:
+    Description: ECS template Object URL
+    Type: String
+
+  TemplateCodepipeline:
+    Description: Codepipeline template Object URL
+    Type: String
+
+Resources:
+  # VPC、Subnetの作成
+  Network:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref TemplateNetwork
+
+  # ELBの作成
+  ALB:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref TemplateALB
+      Parameters:
+        VPCId: !GetAtt Network.Outputs.VPC
+        PublicSubnet1: !GetAtt Network.Outputs.PublicSubnet1
+        PublicSubnet2: !GetAtt Network.Outputs.PublicSubnet2
+        BackendACMArn: !Ref BackendACMArn
+    DependsOn: Network
+
+  # ECS Cluster、Service、TaskDef、Taskの作成
+  ECS:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref TemplateECS
+      Parameters:
+        AccountId: !Ref AccountId
+        VPCId: !GetAtt Network.Outputs.VPC
+        PrivateSubnet1: !GetAtt Network.Outputs.PrivateSubnet1
+        PrivateSubnet2: !GetAtt Network.Outputs.PrivateSubnet2
+        ALBName: !GetAtt ALB.Outputs.ALBName
+        TargetGroupArn: !GetAtt ALB.Outputs.TargetGroupArn
+        ContainerName: !Ref ContainerName
+        ClusterName: !Ref ECSClusterName
+        ServiceName: !Ref ECSServiceName
+    DependsOn: ALB
+
+  # CodePipelineの作成
+  Codepipeline:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref TemplateCodepipeline
+      Parameters:
+        AccountId: !Ref AccountId
+        ContainerName: !Ref ContainerName
+        ClusterName: !Ref ECSClusterName
+        ServiceName: !Ref ECSServiceName
+        TargetGroupArn: !GetAtt ALB.Outputs.TargetGroupArn
+        ArtifactStoreS3: !Ref ArtifactStoreS3
+        GitHubConnectionArn: !Ref GitHubConnectionArn
+        RepositoryName: !Ref RepositoryName
+        BranchName: !Ref BranchName
+    DependsOn: ECS

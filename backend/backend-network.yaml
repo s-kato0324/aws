@@ -1,0 +1,205 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Manage myself verification environment
+
+Resources:
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: cfn-backend-vpc
+
+  IGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: cfn-backend-igw
+
+  AttachmentIGW:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref IGW
+      VpcId: !Ref VPC
+
+  # パブリックサブネット作成
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: cfn-backend-public-route-table
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachmentIGW
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref IGW
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: 10.0.1.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: cfn-backend-public-subent1
+      VpcId: !Ref VPC
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1c
+      CidrBlock: 10.0.2.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: cfn-backend-public-subent2
+      VpcId: !Ref VPC
+
+  associatePublicRouteSubnet1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet1
+
+  associatePublicRouteSubnet2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      SubnetId: !Ref PublicSubnet2
+
+  # ElasticIP作成
+  elasticIP1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: cfn-backend-eip1
+
+  elasticIP2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: cfn-backend-eip2
+
+  # NAT Gatewat作成
+  natgateway1:
+    Type: AWS::EC2::NatGateway
+    DependsOn:
+      - elasticIP1
+    Properties:
+      AllocationId: !GetAtt elasticIP1.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: cfn-backend-nat-1
+
+  natgateway2:
+    Type: AWS::EC2::NatGateway
+    DependsOn:
+      - elasticIP2
+    Properties:
+      AllocationId: !GetAtt elasticIP2.AllocationId
+      ConnectivityType: public
+      SubnetId: !Ref PublicSubnet2
+      Tags:
+        - Key: Name
+          Value: cfn-backend-nat-2
+
+  # プライベートサブネット作成
+  PrivateSubnetRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: cfn-backend-private-route-table1
+      VpcId: !Ref VPC
+
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1a
+      CidrBlock: 10.0.3.0/24
+      Tags:
+        - Key: Name
+          Value: cfn-backend-private-subent1
+      VpcId: !Ref VPC
+
+  associatePrivateRouteSubnet1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTable1
+      SubnetId: !Ref PrivateSubnet1
+
+  PrivateSubnetRouteTable2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      Tags:
+        - Key: Name
+          Value: cfn-backend-private-route-table2
+      VpcId: !Ref VPC
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      AvailabilityZone: ap-northeast-1c
+      CidrBlock: 10.0.4.0/24
+      Tags:
+        - Key: Name
+          Value: cfn-backend-private-subent2
+      VpcId: !Ref VPC
+
+  associatePrivateRouteSubnet2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref PrivateSubnetRouteTable2
+      SubnetId: !Ref PrivateSubnet2
+
+  PrivateRoute1:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - natgateway1
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref natgateway1
+      RouteTableId: !Ref PrivateSubnetRouteTable1
+
+  PrivateRoute2:
+    Type: AWS::EC2::Route
+    DependsOn:
+      - natgateway2
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref natgateway2
+      RouteTableId: !Ref PrivateSubnetRouteTable2
+
+Outputs:
+  VPC:
+    Value: !Ref VPC
+    Description: VPC ID
+
+  PublicSubnet1:
+    Value: !Ref PublicSubnet1
+    Description: Public Subnet1 ID
+
+  PublicSubnet2:
+    Value: !Ref PublicSubnet2
+    Description: Public Subnet2 ID
+
+  PrivateSubnet1:
+    Value: !Ref PrivateSubnet1
+    Description: Private Subnet1 ID
+
+  PrivateSubnet2:
+    Value: !Ref PrivateSubnet2
+    Description: Private Subnet2 ID

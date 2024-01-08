@@ -1,0 +1,72 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Manage myself verification environment
+
+Parameters:
+  AccountId:
+    Description: execute Account ID
+    Type: String
+
+  DomainName:
+    Description: altername domain name
+    Type: String
+
+  S3OriginAndArtifactBucketName:
+    Type: String
+    Description: cloudfront origin and codepipeline artifact store
+
+  CodeBuildRoleArn:
+    Type: String
+    Description: CodeBuild Service Role
+
+  CodepipelineRoleArn:
+    Type: String
+    Description: Codepipeline Role
+
+  ACMArn:
+    Description: ACM Arn
+    Type: String
+
+  ConnectionArn:
+    Description: GitHub Connection Arn
+    Type: String
+
+  RepositoryName:
+    Type: String
+    Description: github target repository Name
+
+  BranchName:
+    Type: String
+    Description: github target repository branch name
+
+  TemplateCloudFront:
+    Description: Cloudfront template Object URL
+    Type: String
+
+  TemplateCodepipeline:
+    Description: Codepipeline template Object URL
+    Type: String
+
+Resources:
+  # CloudFrontの作成
+  CloudFront:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref TemplateCloudFront
+      Parameters:
+        BucketName: !Ref S3OriginAndArtifactBucketName
+        DomainName: !Ref DomainName
+        ACMArn: !Ref ACMArn
+
+  # Codepipelineの作成
+  Codepipeline:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Ref TemplateCodepipeline
+      Parameters:
+        DistributionID: !GetAtt CloudFront.Outputs.DistributionID
+        BucketName: !Ref S3OriginAndArtifactBucketName
+        CodeBuildRoleArn: !Ref CodeBuildRoleArn
+        CodepipelineRoleArn: !Ref CodepipelineRoleArn
+        ConnectionArn: !Ref ConnectionArn
+        RepositoryName: !Ref RepositoryName
+        BranchName: !Ref BranchName
